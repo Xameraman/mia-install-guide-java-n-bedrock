@@ -243,6 +243,18 @@ body {
 .footer-sub span { color:#FF6B6B; }
 
 .file-tag{ display:inline-block; background:rgba(0,0,0,0.5); color:var(--tip); font-family:'Press Start 2P',monospace; font-size:7px; padding:3px 8px; border-radius:3px; margin-right:4px; letter-spacing:0.5px; border:1px solid rgba(71,201,107,0.3); }
+
+/* ── MOBILE FIX for AI chat bubble ── */
+@media (max-width: 600px) {
+  .chatling-widget,
+  .chtl-chat,
+  #chatling-bubble {
+    max-width: 92vw !important;
+    max-height: 70vh !important;
+    bottom: 10px !important;
+    right: 10px !important;
+  }
+}
 </style>
 </head>
 <body>
@@ -574,5 +586,9 @@ function changeStep(dir) {
   }
 }
 </script>
+
+<!-- MIA AI Assistant (same agent across all MIA guide sites) -->
+<script> window.chtlConfig = { chatbotId: "7411237892" } </script>
+<script async data-id="7411237892" id="chtl-script" type="text/javascript" src="https://chatling.ai/js/embed.js"></script>
 </body>
 </html>
