@@ -3,6 +3,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>How to Install Addons & Mods — MIA Guide</title>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
@@ -464,6 +465,20 @@ body {
   <div id="mia-messages">
     <div class="mia-msg bot">Hey! 👋 I'm <strong>MIA Assistant</strong>. Ask me anything about <em>MIA</em>, Minecraft Bedrock, or anything else — I'm here to help!</div>
   </div>
+  <!-- Cloudflare Turnstile – human verification -->
+  <div id="mia-captcha-wrap" style="padding:12px;display:none;text-align:center;">
+    <div class="cf-turnstile"
+         data-sitekey="0x4AAAAAADQ644b2jjSd7BsB"
+         data-callback="onCaptchaSuccess"
+         data-theme="dark"
+         data-size="flexible"
+         style="max-width:300px;margin:0 auto;">
+    </div>
+    <div style="font-size:11px;color:rgba(255,255,255,0.3);text-align:center;
+                margin-top:6px;font-family:sans-serif;">
+      Verify you're human to start chatting
+    </div>
+  </div>
   <div id="mia-input-row">
     <textarea id="mia-input" placeholder="Ask me anything..." rows="1"></textarea>
     <button id="mia-send">➤</button>
@@ -724,12 +739,12 @@ function changeStep(dir) {
   }
 }
 </script>
-<!-- ══════════════════ MIA WIDGET JS (v14 – swear filter, new chat, complexity routing) ══════════════════ -->
+<!-- ══════════════════ MIA WIDGET JS (Turnstile version) ══════════════════ -->
 <script>
 (function () {
   const API_URL    = 'https://xameraman5022-mia-assistant.hf.space/chat';
   const STATUS_URL = 'https://xameraman5022-mia-assistant.hf.space/status';
-  const SOURCE     = 'general'; // ← change per page
+  const SOURCE     = 'general'; // ← CHANGE PER PAGE
 
   // ── Token ──
   let token = localStorage.getItem('mia_token');
@@ -744,6 +759,24 @@ function changeStep(dir) {
     'Content-Type': 'application/json',
     'x-user-token': token,
     'x-user-fp':    fingerprint
+  };
+
+  // ── Captcha state ──
+  let captchaVerified = sessionStorage.getItem('mia_captcha') === 'yes';
+  let captchaToken    = null;
+
+  window.onCaptchaSuccess = function(cfToken) {
+    captchaToken    = cfToken;
+    captchaVerified = true;
+    sessionStorage.setItem('mia_captcha', 'yes');
+    const captchaWrap = document.getElementById('mia-captcha-wrap');
+    const inputRow    = document.getElementById('mia-input-row');
+    if (captchaWrap) captchaWrap.style.display = 'none';
+    if (inputRow)    inputRow.style.display    = 'flex';
+    const footer = document.getElementById('mia-footer-note');
+    if (footer) footer.textContent = 'MIA AI • Powered by MIA Official';
+    const input = document.getElementById('mia-input');
+    if (input) input.focus();
   };
 
   // ── Bad word list ──
@@ -786,14 +819,13 @@ function changeStep(dir) {
     return false;
   }
 
-  // ── Frontend repetition ──
-  const REPEAT_WIN   = 5;
-  const REPEAT_AT    = 3;
-  const SHORT_AT     = 2;
-  const TIME_WIN_MS  = 60000;
+  // ── Repetition tracking ──
+  const REPEAT_WINDOW   = 5;
+  const REPEAT_LOCK_AT  = 3;
+  const SHORT_LOCK_AT   = 2;
+  const REPEAT_TIME_WIN = 60000;
   let msgHistory     = [];
   let shortWarnShown = false;
-
   function normMsg(t) { return t.toLowerCase().trim().replace(/\s+/g,' '); }
   function simil(a,b) {
     if(!a||!b) return 0;
@@ -804,18 +836,18 @@ function changeStep(dir) {
   }
   function checkRepetitive(text) {
     const norm=normMsg(text), now=Date.now();
-    msgHistory = msgHistory.filter(e=>now-e.t<=TIME_WIN_MS);
+    msgHistory = msgHistory.filter(e=>now-e.t<=REPEAT_TIME_WIN);
     if(norm.length<=2){
       const sc=msgHistory.filter(e=>e.m===norm).length;
-      if(sc>=SHORT_AT) return {lock:true,reason:'short'};
+      if(sc>=SHORT_LOCK_AT) return {lock:true,reason:'short'};
       if(!shortWarnShown){shortWarnShown=true;return{lock:false,warn:true};}
     }
     const ec=msgHistory.filter(e=>e.m===norm).length;
-    if(ec>=REPEAT_AT-1) return {lock:true,reason:'exact'};
+    if(ec>=REPEAT_LOCK_AT-1) return {lock:true,reason:'exact'};
     const sc=msgHistory.filter(e=>simil(norm,e.m)>=0.85&&norm!==e.m).length;
     if(sc>=2) return {lock:true,reason:'similar'};
-    msgHistory.push({m:norm,t:now});
-    if(msgHistory.length>REPEAT_WIN) msgHistory=msgHistory.slice(-REPEAT_WIN);
+    msgHistory.push({m:norm,t:Date.now()});
+    if(msgHistory.length>REPEAT_WINDOW) msgHistory=msgHistory.slice(-REPEAT_WINDOW);
     return {lock:false};
   }
 
@@ -832,6 +864,20 @@ function changeStep(dir) {
   const input   = document.getElementById('mia-input');
   const sendBtn = document.getElementById('mia-send');
   const footer  = document.getElementById('mia-footer-note');
+
+  // ── Show/hide captcha vs input ──
+  function updateCaptchaState() {
+    const captchaWrap = document.getElementById('mia-captcha-wrap');
+    const inputRow    = document.getElementById('mia-input-row');
+    if (captchaVerified) {
+      if (captchaWrap) captchaWrap.style.display = 'none';
+      if (inputRow)    inputRow.style.display    = 'flex';
+    } else {
+      if (captchaWrap) captchaWrap.style.display = 'block';
+      if (inputRow)    inputRow.style.display    = 'none';
+      if (footer)      footer.textContent        = '🔒 Verify to start chatting';
+    }
+  }
 
   // ── Global slow mode banner ──
   let slowBanner = null;
@@ -853,16 +899,16 @@ function changeStep(dir) {
   // ── New Chat button ──
   const header = document.getElementById('mia-panel-header');
   if (header) {
-    const ncBtn = document.createElement('button');
-    ncBtn.title = 'New conversation';
-    ncBtn.textContent = '🔄';
-    ncBtn.style.cssText = `background:none;border:none;cursor:pointer;font-size:16px;
+    const newChatBtn = document.createElement('button');
+    newChatBtn.title = 'New conversation';
+    newChatBtn.textContent = '🔄';
+    newChatBtn.style.cssText = `background:none;border:none;cursor:pointer;font-size:16px;
       opacity:0.45;transition:opacity .2s;padding:2px 4px;margin-left:auto;flex-shrink:0;`;
-    ncBtn.onmouseover = ()=>ncBtn.style.opacity='1';
-    ncBtn.onmouseout  = ()=>ncBtn.style.opacity='0.45';
-    ncBtn.addEventListener('click', resetChat);
+    newChatBtn.onmouseover = ()=>newChatBtn.style.opacity='1';
+    newChatBtn.onmouseout  = ()=>newChatBtn.style.opacity='0.45';
+    newChatBtn.addEventListener('click', resetChat);
     const dot = document.getElementById('mia-online-dot');
-    if(dot) header.insertBefore(ncBtn,dot); else header.appendChild(ncBtn);
+    if(dot) header.insertBefore(newChatBtn,dot); else header.appendChild(newChatBtn);
   }
 
   // ── Countdown ──
@@ -911,6 +957,12 @@ function changeStep(dir) {
     if(footer) footer.textContent='MIA AI • Powered by MIA Official';
     msgs.innerHTML='';
     addMessage('bot','🔄 Chat cleared! Hey! 👋 I\'m <strong>MIA Assistant</strong>. Ask me anything — I\'m here to help!');
+    // Reset captcha on new chat
+    captchaVerified = false;
+    captchaToken    = null;
+    sessionStorage.removeItem('mia_captcha');
+    updateCaptchaState();
+    if(window.turnstile) window.turnstile.reset();
   }
 
   // ── Check server status on load ──
@@ -920,14 +972,12 @@ function changeStep(dir) {
       if(!res.ok) return;
       const data = await res.json();
 
-      // Global slow mode
       if(data.slow_mode && data.slow_until>0) {
         showSlowBanner(data.slow_until);
       } else {
         hideSlowBanner();
       }
 
-      // User lock
       if(data.locked && data.unlock_in>0) {
         chatLocked=true; input.disabled=true; sendBtn.disabled=true;
         input.placeholder='⛔ Locked. Wait for timer.';
@@ -941,16 +991,17 @@ function changeStep(dir) {
     } catch(e) { /* silent */ }
   }
 
+  updateCaptchaState();
   checkStatusOnLoad();
 
   btn.addEventListener('click', ()=>{
     isOpen=!isOpen;
     panel.classList.toggle('mia-open',isOpen);
     btn.textContent=isOpen?'✕':'🤖';
-    if(isOpen){ input.focus(); scrollToBottom(); checkStatusOnLoad(); }
+    if(isOpen){ scrollToBottom(); checkStatusOnLoad(); updateCaptchaState(); }
   });
 
-  input.addEventListener('input',()=>{
+  input.addEventListener('input', ()=>{
     input.style.height='auto';
     input.style.height=Math.min(input.scrollHeight,80)+'px';
   });
@@ -962,22 +1013,18 @@ function changeStep(dir) {
 
   async function sendMessage() {
     if(chatLocked) return;
+    if(!captchaVerified){ updateCaptchaState(); return; }
     const text=input.value.trim();
     if(!text||isLoading) return;
 
-    // Length check
     if(text.length>600){
       lockChat('⛔ <strong>Chat locked</strong> — message too long. Keep under 600 chars. 🔄',15);
       return;
     }
-
-    // Bad word check
     if(isBadMessage(text)){
       lockChat('⛔ <strong>Chat locked</strong> — swearing, NSFW, and rude behavior are not allowed. 🔄',15);
       return;
     }
-
-    // Repetition check
     const rep=checkRepetitive(text);
     if(rep.warn){
       addMessage('bot','💡 Please ask a proper question! Very short messages may be limited. 😊');
@@ -987,7 +1034,7 @@ function changeStep(dir) {
       lockChat(
         rep.reason==='short'
           ? '⛔ <strong>Chat locked</strong> — please type real questions. 🔄'
-          : '⛔ <strong>Chat locked</strong> — stop repeating the same message. Ask something new. 🔄',
+          : '⛔ <strong>Chat locked</strong> — stop repeating the same message. 🔄',
         15
       );
       return;
@@ -1003,27 +1050,39 @@ function changeStep(dir) {
     try {
       const res = await fetch(API_URL,{
         method:'POST', headers:HEADERS,
-        body:JSON.stringify({message:text,history:history.slice(0,-1),source:SOURCE})
+        body:JSON.stringify({
+          message:       text,
+          history:       history.slice(0,-1),
+          source:        SOURCE,
+          captcha_token: captchaToken || ''
+        })
       });
       if(!res.ok) throw new Error(`HTTP ${res.status}`);
       const data=await res.json();
 
-      // Server-side timed lock
+      // Server-side captcha rejection
+      if(data.captcha){
+        typing.remove();
+        captchaVerified = false;
+        captchaToken    = null;
+        sessionStorage.removeItem('mia_captcha');
+        updateCaptchaState();
+        if(window.turnstile) window.turnstile.reset();
+        addMessage('bot','⛔ Human verification failed. Please verify again.');
+        setLoading(false); return;
+      }
+
       if(data.locked){
         typing.remove();
         lockChat(data.response||'⛔ You have been locked. Please wait.',data.unlock_in||15);
         setLoading(false); return;
       }
-
-      // Server slow mode
       if(data.slow_mode){
         typing.remove();
         showSlowBanner(data.unlock_in||60);
-        addMessage('bot',data.response||'🛡️ MIA is under high load. Please wait a moment.');
+        addMessage('bot',data.response||'🛡️ MIA is under high load. Please wait.');
         setLoading(false); return;
       }
-
-      // Spam lock (permanent until refresh)
       if(data.spam){
         typing.remove();
         lockChat(data.response||'⛔ Chat locked. Refresh to unlock.',0);
@@ -1071,5 +1130,4 @@ function changeStep(dir) {
   function setLoading(s){isLoading=s;input.disabled=s;sendBtn.disabled=s;}
 })();
 </script>
-</body>
-</html>
+</body
